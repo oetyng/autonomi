@@ -1,6 +1,10 @@
 import pytest
 from autonomi_client import *
 
+def _b32(b: bytes) -> bytes:
+    assert len(b) == 32
+    return b
+
 def test_graph_entry_address():
     # Create a random address from XOR
     xor_hex = random_xor()
@@ -16,6 +20,51 @@ def test_graph_entry_address():
 
     # Create a graph entry address from a (random) public key
     addr = GraphEntryAddress.from_owner(PublicKey.random())
+
+def test_graph_entry_methods_and_roundtrip():
+    owner = SecretKey()
+    parents = [PublicKey.random() for _ in range(2)]
+    content = _b32(os.urandom(32))
+    descendants = [
+        (PublicKey.random(), _b32(os.urandom(32))),
+        (PublicKey.random(), _b32(os.urandom(32))),
+    ]
+
+    ge = GraphEntry(owner, parents, content, descendants)
+
+    # Test address()
+    addr = ge.address()
+    assert isinstance(addr, GraphEntryAddress)
+
+    # Test content()
+    assert ge.content() == content
+
+    # Test parents()
+    ps = ge.parents()
+    assert isinstance(ps, list) and all(isinstance(p, PublicKey) for p in ps)
+
+    # Test descendants()
+    ds = ge.descendants()
+    assert isinstance(ds, list)
+    for pk, h in ds:
+        assert isinstance(pk, PublicKey)
+        assert isinstance(h, (bytes, bytearray)) and len(h) == 32
+    
+    # Parents round-trip
+    in_parent_hex = [p.hex for p in parents]
+    out_parent_hex = [p.hex for p in ge.parents()]
+    assert out_parent_hex == in_parent_hex
+
+    # Descendants round-trip
+    in_desc = [(pk.hex, h) for pk, h in descendants]
+    out_desc = [(pk.hex, h) for pk, h in ge.descendants()]
+    assert out_desc == in_desc
+
+    # Type/shape errors
+    with pytest.raises(Exception):
+        GraphEntry(owner, parents, os.urandom(31), descendants)     # bad length
+    with pytest.raises(Exception):
+        GraphEntry(owner, parents, content, [(PublicKey.random(), b"x")])  # bad tuple len
 
 def test_chunk_address():
     # Create a random address from XOR
